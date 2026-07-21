@@ -52,7 +52,10 @@ export class TrackingController {
       }
 
       // Create tracking record
-      const trackingRecord = await TrackingModel.create({
+      // Update existing tracking or create if not exists
+    const trackingRecord = await TrackingModel.findOneAndUpdate(
+      { bus: busId },
+      {
         driverId: driverId || "UNKNOWN",
         driverName: driverName || "Unknown Driver",
         busId: busId,
@@ -68,8 +71,12 @@ export class TrackingController {
         bus: busId,
         route: routeId,
         status: "Live",
-      });
-
+      },
+      {
+        new: true,
+        upsert: true,
+      }
+    );
       // Also update Bus location field
       await BusModel.findByIdAndUpdate(busId, {
         location: {
