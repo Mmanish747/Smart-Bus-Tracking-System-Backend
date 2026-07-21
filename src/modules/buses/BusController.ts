@@ -4,7 +4,6 @@ import DriverModel from "../drivers/DriverModel.js";
 import RouteModel from "../routes/RouteModel.js";
 
 export class BusController {
-  // ── GET /api/buses ────────────────────────────────────────────────────────
   async getAllBuses(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -31,7 +30,6 @@ export class BusController {
     }
   }
 
-  // ── GET /api/buses/:id ────────────────────────────────────────────────────
   async getBusById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
@@ -49,12 +47,9 @@ export class BusController {
     }
   }
 
-  // ── GET /api/buses/:busId/route ───────────────────────────────────────────
-  // Fetch assigned route for a specific bus (Mobile App Route Loading)
   async getBusRoute(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { busId } = req.params;
-
       const bus = await BusModel.findById(busId).populate("assignedRoute");
 
       if (!bus) {
@@ -72,7 +67,6 @@ export class BusController {
       }
 
       const routeObj: any = bus.assignedRoute;
-
       res.status(200).json({
         success: true,
         routeId: routeObj._id,
@@ -88,7 +82,6 @@ export class BusController {
     }
   }
 
-  // ── POST /api/buses ───────────────────────────────────────────────────────
   async createBus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { busNumber, modelName, capacity, status, assignedDrivers, assignedRoute } = req.body;
@@ -107,6 +100,10 @@ export class BusController {
       if (assignedRoute) {
         const routeDoc = await RouteModel.findById(assignedRoute);
         if (routeDoc) {
+          if (routeDoc.busAssigned && routeDoc.assignedBus) {
+            res.status(400).json({ success: false, message: "Selected route is already assigned to another bus." });
+            return;
+          }
           routeIdStr = routeDoc._id.toString();
           routeNameStr = `${routeDoc.from} - ${routeDoc.to}`;
         }
@@ -119,11 +116,11 @@ export class BusController {
         status: status || "Active",
         assignedDrivers: driverIds,
         assignedRoute: assignedRoute || null,
+        routeAssigned: !!assignedRoute,
         routeId: routeIdStr,
         routeName: routeNameStr,
       });
 
-      // Synchronize Driver collection
       if (driverIds.length > 0) {
         await DriverModel.updateMany(
           { _id: { $in: driverIds } },
@@ -131,12 +128,10 @@ export class BusController {
         );
       }
 
-      // Synchronize Route collection
       if (assignedRoute) {
         await RouteModel.findByIdAndUpdate(assignedRoute, {
-          assignedBusId: newBus._id.toString(),
-          assignedBusNo: newBus.busNumber,
-          $addToSet: { assignedBuses: newBus._id },
+          assignedBus: newBus._id,
+          busAssigned: true,
         });
       }
 
@@ -150,7 +145,6 @@ export class BusController {
     }
   }
 
-  // ── PUT /api/buses/:id ────────────────────────────────────────────────────
   async updateBus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
@@ -175,41 +169,47 @@ export class BusController {
       if (capacity !== undefined) bus.capacity = capacity;
       if (status !== undefined) bus.status = status;
 
-      // Handle assignedRoute updates
       if (assignedRoute !== undefined) {
         const oldRouteId = bus.assignedRoute?.toString();
 
         if (assignedRoute) {
+          if (oldRouteId && oldRouteId !== assignedRoute) {
+             res.status(400).json({ success: false, message: "Bus is already assigned to a route. Please unassign first." });
+             return;
+          }
+
           const routeDoc = await RouteModel.findById(assignedRoute);
           if (routeDoc) {
+            if (routeDoc.assignedBus && routeDoc.assignedBus.toString() !== bus._id.toString()) {
+               res.status(400).json({ success: false, message: "Selected route is already assigned to another bus." });
+               return;
+            }
+
             bus.assignedRoute = routeDoc._id as any;
+            bus.routeAssigned = true;
             bus.routeId = routeDoc._id.toString();
             bus.routeName = `${routeDoc.from} - ${routeDoc.to}`;
 
-            // Sync new route
             await RouteModel.findByIdAndUpdate(assignedRoute, {
-              assignedBusId: bus._id.toString(),
-              assignedBusNo: bus.busNumber,
-              $addToSet: { assignedBuses: bus._id },
+              assignedBus: bus._id,
+              busAssigned: true,
             });
           }
         } else {
-          // Unlink route
           bus.assignedRoute = null;
+          bus.routeAssigned = false;
           bus.routeId = "";
           bus.routeName = "";
 
           if (oldRouteId) {
             await RouteModel.findByIdAndUpdate(oldRouteId, {
-              assignedBusId: "",
-              assignedBusNo: "",
-              $pull: { assignedBuses: bus._id },
+              assignedBus: null,
+              busAssigned: false,
             });
           }
         }
       }
 
-      // Handle assignedDrivers updates
       if (Array.isArray(assignedDrivers)) {
         const oldDriverIds = bus.assignedDrivers.map((d) => d.toString());
         const newDriverIds = assignedDrivers.map((d: string) => d.toString());
@@ -229,7 +229,6 @@ export class BusController {
             { $addToSet: { assignedBuses: bus._id } }
           );
         }
-
         bus.assignedDrivers = assignedDrivers as any;
       }
 
@@ -245,7 +244,6 @@ export class BusController {
     }
   }
 
-  // ── DELETE /api/buses/:id ─────────────────────────────────────────────────
   async deleteBus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
@@ -255,18 +253,15 @@ export class BusController {
         return;
       }
 
-      // Clean up driver references
       await DriverModel.updateMany(
         { assignedBuses: bus._id },
         { $pull: { assignedBuses: bus._id } }
       );
 
-      // Clean up route references
       if (bus.assignedRoute) {
         await RouteModel.findByIdAndUpdate(bus.assignedRoute, {
-          assignedBusId: "",
-          assignedBusNo: "",
-          $pull: { assignedBuses: bus._id },
+          assignedBus: null,
+          busAssigned: false,
         });
       }
 
@@ -277,78 +272,43 @@ export class BusController {
     }
   }
 
-  // ── POST /api/buses/:busId/assign-driver ──────────────────────────────────
   async assignDriver(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { driverId } = req.body;
       const busId = req.params.busId || req.params.id;
 
-      if (!driverId) {
-        res.status(400).json({ success: false, message: "driverId is required" });
-        return;
-      }
-
+      if (!driverId) { res.status(400).json({ success: false, message: "driverId is required" }); return; }
+      
       const bus = await BusModel.findById(busId);
-      if (!bus) {
-        res.status(404).json({ success: false, message: "Bus not found" });
-        return;
-      }
-
+      if (!bus) { res.status(404).json({ success: false, message: "Bus not found" }); return; }
+      
       const driver = await DriverModel.findById(driverId);
-      if (!driver) {
-        res.status(404).json({ success: false, message: "Driver not found" });
-        return;
-      }
+      if (!driver) { res.status(404).json({ success: false, message: "Driver not found" }); return; }
 
       await BusModel.findByIdAndUpdate(busId, { $addToSet: { assignedDrivers: driverId } });
       await DriverModel.findByIdAndUpdate(driverId, { $addToSet: { assignedBuses: busId } });
 
-      const updatedBus = await BusModel.findById(busId)
-        .populate("assignedDrivers")
-        .populate("assignedRoute");
-
-      res.status(200).json({
-        success: true,
-        message: "Driver assigned successfully",
-        bus: updatedBus,
-      });
-    } catch (error) {
-      next(error);
-    }
+      const updatedBus = await BusModel.findById(busId).populate("assignedDrivers").populate("assignedRoute");
+      res.status(200).json({ success: true, message: "Driver assigned successfully", bus: updatedBus });
+    } catch (error) { next(error); }
   }
 
-  // ── POST /api/buses/:busId/remove-driver ──────────────────────────────────
   async removeDriver(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { driverId } = req.body;
       const busId = req.params.busId || req.params.id;
 
-      if (!driverId) {
-        res.status(400).json({ success: false, message: "driverId is required" });
-        return;
-      }
+      if (!driverId) { res.status(400).json({ success: false, message: "driverId is required" }); return; }
 
       const bus = await BusModel.findById(busId);
-      if (!bus) {
-        res.status(404).json({ success: false, message: "Bus not found" });
-        return;
-      }
+      if (!bus) { res.status(404).json({ success: false, message: "Bus not found" }); return; }
 
       await BusModel.findByIdAndUpdate(busId, { $pull: { assignedDrivers: driverId } });
       await DriverModel.findByIdAndUpdate(driverId, { $pull: { assignedBuses: busId } });
 
-      const updatedBus = await BusModel.findById(busId)
-        .populate("assignedDrivers")
-        .populate("assignedRoute");
-
-      res.status(200).json({
-        success: true,
-        message: "Driver removed successfully",
-        bus: updatedBus,
-      });
-    } catch (error) {
-      next(error);
-    }
+      const updatedBus = await BusModel.findById(busId).populate("assignedDrivers").populate("assignedRoute");
+      res.status(200).json({ success: true, message: "Driver removed successfully", bus: updatedBus });
+    } catch (error) { next(error); }
   }
 }
 

@@ -19,6 +19,10 @@ const busSchema = new Schema(
       },
     },
     // Bus ↔ Route bidirectional fields
+    routeAssigned: {
+      type: Boolean,
+      default: false,
+    },
     assignedRoute: {
       type: Schema.Types.ObjectId,
       ref: "Route",

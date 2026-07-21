@@ -4,7 +4,7 @@ const stopSchema = new Schema({
   name: { type: String, required: true },
   lat: { type: Number },
   lng: { type: Number },
-  timeOffset: { type: Number }, // offset in minutes from start
+  timeOffset: { type: Number },
   type: { type: String, enum: ["start", "stop", "end"], default: "stop" },
 });
 
@@ -20,16 +20,18 @@ const routeSchema = new Schema(
     active: { type: Boolean, default: true },
     stops: [stopSchema],
     pathCoordinates: {
-      type: [[Number]], // Array of [lat, lng] arrays
+      type: [[Number]],
       required: true,
     },
-    assignedBuses: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Bus",
-      },
-    ],
-
+    busAssigned: {
+      type: Boolean,
+      default: false,
+    },
+    assignedBus: {
+      type: Schema.Types.ObjectId,
+      ref: "Bus",
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,
