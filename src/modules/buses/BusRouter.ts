@@ -15,7 +15,7 @@ busesRouter.get("/:id", busCtrl.getBusById.bind(busCtrl));
 busesRouter.post("/", authenticate, authorize(["admin"]), validateBody(["busNumber"]), busCtrl.createBus.bind(busCtrl));
 busesRouter.put("/:id", authenticate, authorize(["admin"]), busCtrl.updateBus.bind(busCtrl));
 busesRouter.delete("/:id", authenticate, authorize(["admin"]), busCtrl.deleteBus.bind(busCtrl));
-busesRouter.patch("/:id/status", authenticate, authorize(["admin"]), busCtrl.updateStatus.bind(busCtrl));
+busesRouter.patch("/:id/status", authenticate, authorize(["admin","driver"]), busCtrl.updateStatus.bind(busCtrl));
 
 // Driver Assignment APIs
 busesRouter.post("/:busId/assign-driver", authenticate, busCtrl.assignDriver.bind(busCtrl));
