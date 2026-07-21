@@ -49,10 +49,7 @@ export const authorize = (roles: string[]) => {
     if (!req.user) {
       res.status(401).json({ success: false, message: "Unauthorized." });
       return;
-        }console.log("AUTH CHECK:", {
-      userRole: req.user.role,
-      allowedRoles: roles
-    });
+        }
 
     if (!roles.includes(req.user.role)) {
       res.status(403).json({ success: false, message: "Forbidden. Insufficient permissions." });
