@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 import DriverModel from "./DriverModel.js";
 import BusModel from "../buses/BusModel.js";
+
+const JWT_SECRET = process.env.JWT_SECRET as string;
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+
 
 export class DriverController {
   // ── POST /api/drivers/login ───────────────────────────────────────────────
@@ -49,19 +57,32 @@ export class DriverController {
         return;
       }
 
-      res.status(200).json({
-        success: true,
-        message: "Driver verified successfully.",
-        driver: {
-          id: driver._id,
-          driverId: driver.driverId,
-          name: driver.name,
-          phoneNumber: driver.phoneNumber,
-          email: driver.email,
-          licenseNumber: driver.licenseNumber,
-          assignedBuses: driver.assignedBuses || [],
-        },
-      });
+          const token = jwt.sign(
+      {
+        id: driver._id,
+        role: "driver",
+        email: driver.email,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Driver verified successfully.",
+      token,
+      driver: {
+        id: driver._id,
+        driverId: driver.driverId,
+        name: driver.name,
+        phoneNumber: driver.phoneNumber,
+        email: driver.email,
+        licenseNumber: driver.licenseNumber,
+        assignedBuses: driver.assignedBuses || [],
+      },
+    });
     } catch (error) {
       next(error);
     }
