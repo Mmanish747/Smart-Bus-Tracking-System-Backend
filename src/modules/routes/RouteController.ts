@@ -2,15 +2,41 @@ import { Request, Response, NextFunction } from "express";
 import RouteModel from "./RouteModel.js";
 import BusModel from "../buses/BusModel.js";
 import StopModel from "../stops/StopModel.js";
+import ScheduleModel from "../schedules/ScheduleModel.js";
 
 export class RouteController {
+  private async syncRouteSchedules(routeId: string, busIds: string[], frequency: string): Promise<void> {
+    const defaultFirstBus = "06:00";
+    const defaultLastBus = "22:00";
+
+    await Promise.all(
+      busIds.map((busId) =>
+        ScheduleModel.findOneAndUpdate(
+          { route: routeId, bus: busId },
+          {
+            route: routeId,
+            bus: busId,
+            firstBus: defaultFirstBus,
+            lastBus: defaultLastBus,
+            frequency,
+            status: "On Time",
+            active: true,
+          },
+          { upsert: true, new: true, runValidators: true }
+        )
+      )
+    );
+
+    await ScheduleModel.deleteMany({ route: routeId, bus: { $nin: busIds } } as any);
+  }
+
   async getAllRoutes(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
       const skip = (page - 1) * limit;
       const [routes, total] = await Promise.all([
-        RouteModel.find({}).populate("assignedBus").skip(skip).limit(limit),
+        RouteModel.find({}).populate("assignedBus").populate("assignedBuses").skip(skip).limit(limit),
         RouteModel.countDocuments({}),
       ]);
       res.status(200).json({ success: true, routes, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
@@ -22,7 +48,7 @@ export class RouteController {
   async getRouteById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const route = await RouteModel.findById(id).populate("assignedBus");
+      const route = await RouteModel.findById(id).populate("assignedBus").populate("assignedBuses");
       if (!route) {
         res.status(404).json({ success: false, message: "Route not found." });
         return;
@@ -36,37 +62,58 @@ export class RouteController {
   async createRoute(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const {
-        routeNo, from, to, via, frequency, status, color, active, stops, pathCoordinates, namedStops, assignedBus
+        routeNo, from, to, via, frequency, status, color, active, stops, pathCoordinates, namedStops, assignedBuses, assignedBus
       } = req.body;
 
-      if (assignedBus) {
-        const busDoc = await BusModel.findById(assignedBus);
-        if (busDoc && busDoc.routeAssigned && busDoc.assignedRoute) {
-          res.status(400).json({ success: false, message: "Selected bus is already assigned to another route." });
+      const busIds = Array.isArray(assignedBuses)
+        ? assignedBuses.filter(Boolean)
+        : assignedBus
+        ? [assignedBus]
+        : [];
+
+      if (busIds.length > 0) {
+        const busDocs = await BusModel.find({ _id: { $in: busIds } });
+        const alreadyAssigned = busDocs.find((bus) => bus.routeAssigned && bus.assignedRoute);
+        if (alreadyAssigned) {
+          res.status(400).json({ success: false, message: "One or more selected buses are already assigned to another route." });
           return;
         }
       }
 
       const newRoute = await RouteModel.create({
-        routeNo, from, to, via, frequency, status, color, active, stops, pathCoordinates,
-        assignedBus: assignedBus || null,
-        busAssigned: !!assignedBus
+        routeNo,
+        from,
+        to,
+        via,
+        frequency,
+        status,
+        color,
+        active,
+        stops,
+        pathCoordinates,
+        assignedBus: busIds[0] || null,
+        busAssigned: busIds.length > 0,
+        assignedBuses: busIds,
       });
 
-      if (assignedBus) {
-        await BusModel.findByIdAndUpdate(assignedBus, {
-          assignedRoute: newRoute._id,
-          routeAssigned: true,
-          routeId: newRoute._id.toString(),
-          routeName: `${newRoute.from} - ${newRoute.to}`
-        });
+      if (busIds.length > 0) {
+        await BusModel.updateMany(
+          { _id: { $in: busIds } },
+          {
+            assignedRoute: newRoute._id,
+            routeAssigned: true,
+            routeId: newRoute._id.toString(),
+            routeName: `${newRoute.from} - ${newRoute.to}`,
+          }
+        );
+        await this.syncRouteSchedules(newRoute._id.toString(), busIds, newRoute.frequency);
       }
 
       if (namedStops && namedStops.length >= 2) {
         const startPoint = namedStops[0];
         const endPoint = namedStops[namedStops.length - 1];
         await StopModel.findOneAndUpdate(
-          { routeId: newRoute._id },
+          { routeId: newRoute._id } as any,
           {
             routeId: newRoute._id,
             startPoint: { name: startPoint.name, lat: startPoint.lat, lng: startPoint.lng },
@@ -86,13 +133,17 @@ export class RouteController {
   async updateRoute(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { routeNo, from, to, via, frequency, status, color, active, stops, pathCoordinates, namedStops, assignedBus } = req.body;
+      const { routeNo, from, to, via, frequency, status, color, active, stops, pathCoordinates, namedStops, assignedBuses, assignedBus } = req.body;
       
       const route = await RouteModel.findById(id);
       if (!route) {
         res.status(404).json({ success: false, message: "Route not found." });
         return;
       }
+
+      const oldAssignedBusIds = (route.assignedBuses || (route.assignedBus ? [route.assignedBus] : [])).map((bus) =>
+        typeof bus === "string" ? bus : (bus as any)._id.toString()
+      );
 
       route.routeNo = routeNo;
       route.from = from;
@@ -105,52 +156,70 @@ export class RouteController {
       route.stops = stops;
       route.pathCoordinates = pathCoordinates;
 
-      if (assignedBus !== undefined) {
-        const oldAssignedBusId = route.assignedBus?.toString();
+      if (assignedBuses !== undefined || assignedBus !== undefined) {
+        const newBusIds = Array.isArray(assignedBuses)
+          ? assignedBuses.filter(Boolean)
+          : assignedBus
+          ? [assignedBus]
+          : [];
 
-        if (assignedBus) {
-          if (oldAssignedBusId && oldAssignedBusId !== assignedBus) {
-            res.status(400).json({ success: false, message: "Route is already assigned to a bus. Please unassign first." });
+        const busesToAssign = newBusIds.filter((id: string) => !oldAssignedBusIds.includes(id));
+        const busesToUnassign = oldAssignedBusIds.filter((id) => !newBusIds.includes(id));
+
+        if (busesToAssign.length > 0) {
+          const busDocs = await BusModel.find({ _id: { $in: busesToAssign } });
+          const alreadyAssigned = busDocs.find(
+            (bus) => bus.routeAssigned && bus.assignedRoute && bus.assignedRoute.toString() !== route._id.toString()
+          );
+          if (alreadyAssigned) {
+            res.status(400).json({ success: false, message: "One or more selected buses are already assigned to another route." });
             return;
           }
-          
-          const busDoc = await BusModel.findById(assignedBus);
-          if (busDoc && busDoc.assignedRoute && busDoc.assignedRoute.toString() !== route._id.toString()) {
-            res.status(400).json({ success: false, message: "Selected bus is already assigned to another route." });
-            return;
-          }
 
-          route.assignedBus = assignedBus as any;
-          route.busAssigned = true;
+          await BusModel.updateMany(
+            { _id: { $in: busesToAssign } },
+            {
+              assignedRoute: route._id,
+              routeAssigned: true,
+              routeId: route._id.toString(),
+              routeName: `${route.from} - ${route.to}`,
+            }
+          );
+        }
 
-          await BusModel.findByIdAndUpdate(assignedBus, {
-            assignedRoute: route._id,
-            routeAssigned: true,
-            routeId: route._id.toString(),
-            routeName: `${route.from} - ${route.to}`
-          });
-        } else {
-          route.assignedBus = null;
-          route.busAssigned = false;
-
-          if (oldAssignedBusId) {
-            await BusModel.findByIdAndUpdate(oldAssignedBusId, {
+        if (busesToUnassign.length > 0) {
+          await BusModel.updateMany(
+            { _id: { $in: busesToUnassign } },
+            {
               assignedRoute: null,
               routeAssigned: false,
               routeId: "",
-              routeName: ""
-            });
-          }
+              routeName: "",
+            }
+          );
         }
+
+        route.assignedBuses = newBusIds;
+        route.assignedBus = newBusIds[0] || null;
+        route.busAssigned = newBusIds.length > 0;
       }
 
       await route.save();
+
+      if (assignedBuses !== undefined || assignedBus !== undefined) {
+        const newBusIds = Array.isArray(assignedBuses)
+          ? assignedBuses.filter(Boolean)
+          : assignedBus
+          ? [assignedBus]
+          : [];
+        await this.syncRouteSchedules(route._id.toString(), newBusIds, route.frequency);
+      }
 
       if (namedStops && namedStops.length >= 2) {
         const startPoint = namedStops[0];
         const endPoint = namedStops[namedStops.length - 1];
         await StopModel.findOneAndUpdate(
-          { routeId: id },
+          { routeId: id } as any,
           {
             routeId: id,
             startPoint: { name: startPoint.name, lat: startPoint.lat, lng: startPoint.lng },
@@ -176,17 +245,25 @@ export class RouteController {
         return;
       }
       
-      if (route.assignedBus) {
-        await BusModel.findByIdAndUpdate(route.assignedBus, {
-          assignedRoute: null,
-          routeAssigned: false,
-          routeId: "",
-          routeName: ""
-        });
+      const busIds = (route.assignedBuses || (route.assignedBus ? [route.assignedBus] : [])).map((bus) =>
+        typeof bus === "string" ? bus : (bus as any)._id
+      );
+
+      if (busIds.length > 0) {
+        await BusModel.updateMany(
+          { _id: { $in: busIds } },
+          {
+            assignedRoute: null,
+            routeAssigned: false,
+            routeId: "",
+            routeName: "",
+          }
+        );
       }
 
       await route.deleteOne();
-      await StopModel.findOneAndDelete({ routeId: id });
+      await StopModel.findOneAndDelete({ routeId: id } as any);
+      await ScheduleModel.deleteMany({ route: id } as any);
       res.status(200).json({ success: true, message: "Route deleted successfully." });
     } catch (error) {
       next(error);
@@ -204,25 +281,26 @@ export class RouteController {
       const bus = await BusModel.findById(busId);
       if (!bus) { res.status(404).json({ success: false, message: "Bus not found" }); return; }
 
-      if (bus.assignedRoute) {
-        const oldRoute = await RouteModel.findById(bus.assignedRoute);
-        if (oldRoute) {
-          oldRoute.assignedBus = null as any;
-          oldRoute.busAssigned = false;
-          await oldRoute.save();
-        }
+      if (bus.assignedRoute && bus.assignedRoute.toString() !== route._id.toString()) {
+        res.status(400).json({ success: false, message: "Bus is already assigned to another route." });
+        return;
       }
+
+      if (!route.assignedBuses?.some((id) => id.toString() === bus._id.toString())) {
+        route.assignedBuses = [...(route.assignedBuses || []), bus._id as any];
+      }
+      route.assignedBus = route.assignedBuses[0] || null;
+      route.busAssigned = route.assignedBuses.length > 0;
 
       bus.assignedRoute = route._id;
       bus.routeAssigned = true;
       bus.routeId = route._id.toString();
       bus.routeName = `${route.from} - ${route.to}`;
 
-      route.assignedBus = bus._id as any;
-      route.busAssigned = true;
-
       await bus.save();
       await route.save();
+
+      await this.syncRouteSchedules(route._id.toString(), route.assignedBuses.map((id) => id.toString()), route.frequency);
 
       res.status(200).json({ success: true, message: "Bus assigned successfully" });
     } catch (error) {
@@ -236,17 +314,21 @@ export class RouteController {
       if (!route) { res.status(404).json({ success: false, message: "Route not found" }); return; }
 
       const { busId } = req.body;
+      const unassignedBuses = (route.assignedBuses || []).filter((id) => id.toString() !== busId);
 
-      route.assignedBus = null as any;
-      route.busAssigned = false;
+      route.assignedBuses = unassignedBuses as any;
+      route.assignedBus = unassignedBuses[0] || null;
+      route.busAssigned = unassignedBuses.length > 0;
       await route.save();
 
       await BusModel.findByIdAndUpdate(busId, {
         assignedRoute: null,
         routeAssigned: false,
         routeId: "",
-        routeName: ""
+        routeName: "",
       });
+
+      await this.syncRouteSchedules(route._id.toString(), route.assignedBuses.map((id) => id.toString()), route.frequency);
 
       res.status(200).json({ success: true, message: "Bus removed from route" });
     } catch (error) {

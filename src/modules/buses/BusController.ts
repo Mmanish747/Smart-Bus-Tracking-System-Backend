@@ -100,20 +100,19 @@ export class BusController {
       if (assignedRoute) {
         const routeDoc = await RouteModel.findById(assignedRoute);
         if (routeDoc) {
-          if (routeDoc.busAssigned && routeDoc.assignedBus) {
-            res.status(400).json({ success: false, message: "Selected route is already assigned to another bus." });
-            return;
-          }
           routeIdStr = routeDoc._id.toString();
           routeNameStr = `${routeDoc.from} - ${routeDoc.to}`;
         }
       }
+
+      const activeDriver = driverIds.length > 0 ? driverIds[0] : null;
 
       const newBus = await BusModel.create({
         busNumber,
         modelName,
         capacity,
         status: status || "Active",
+        activeDriver,
         assignedDrivers: driverIds,
         assignedRoute: assignedRoute || null,
         routeAssigned: !!assignedRoute,
@@ -130,6 +129,7 @@ export class BusController {
 
       if (assignedRoute) {
         await RouteModel.findByIdAndUpdate(assignedRoute, {
+          $addToSet: { assignedBuses: newBus._id },
           assignedBus: newBus._id,
           busAssigned: true,
         });
@@ -174,14 +174,15 @@ export class BusController {
 
         if (assignedRoute) {
           if (oldRouteId && oldRouteId !== assignedRoute) {
-             res.status(400).json({ success: false, message: "Bus is already assigned to a route. Please unassign first." });
-             return;
+            await RouteModel.findByIdAndUpdate(oldRouteId, {
+              $pull: { assignedBuses: bus._id },
+            });
           }
 
           const routeDoc = await RouteModel.findById(assignedRoute);
           if (routeDoc) {
-            if (routeDoc.assignedBus && routeDoc.assignedBus.toString() !== bus._id.toString()) {
-               res.status(400).json({ success: false, message: "Selected route is already assigned to another bus." });
+            if (bus.assignedRoute && bus.assignedRoute.toString() !== routeDoc._id.toString()) {
+               res.status(400).json({ success: false, message: "Bus is already assigned to a different route. Please unassign first." });
                return;
             }
 
@@ -191,6 +192,7 @@ export class BusController {
             bus.routeName = `${routeDoc.from} - ${routeDoc.to}`;
 
             await RouteModel.findByIdAndUpdate(assignedRoute, {
+              $addToSet: { assignedBuses: bus._id },
               assignedBus: bus._id,
               busAssigned: true,
             });
@@ -203,8 +205,7 @@ export class BusController {
 
           if (oldRouteId) {
             await RouteModel.findByIdAndUpdate(oldRouteId, {
-              assignedBus: null,
-              busAssigned: false,
+              $pull: { assignedBuses: bus._id },
             });
           }
         }
@@ -230,6 +231,7 @@ export class BusController {
           );
         }
         bus.assignedDrivers = assignedDrivers as any;
+        bus.activeDriver = assignedDrivers.length > 0 ? assignedDrivers[0] : null;
       }
 
       await bus.save();
@@ -285,7 +287,7 @@ export class BusController {
       const driver = await DriverModel.findById(driverId);
       if (!driver) { res.status(404).json({ success: false, message: "Driver not found" }); return; }
 
-      await BusModel.findByIdAndUpdate(busId, { $addToSet: { assignedDrivers: driverId } });
+      await BusModel.findByIdAndUpdate(busId, { $addToSet: { assignedDrivers: driverId }, activeDriver: driverId });
       await DriverModel.findByIdAndUpdate(driverId, { $addToSet: { assignedBuses: busId } });
 
       const updatedBus = await BusModel.findById(busId).populate("assignedDrivers").populate("assignedRoute");
@@ -303,7 +305,11 @@ export class BusController {
       const bus = await BusModel.findById(busId);
       if (!bus) { res.status(404).json({ success: false, message: "Bus not found" }); return; }
 
-      await BusModel.findByIdAndUpdate(busId, { $pull: { assignedDrivers: driverId } });
+      const busDoc = await BusModel.findById(busId);
+      await BusModel.findByIdAndUpdate(busId, {
+        $pull: { assignedDrivers: driverId },
+        activeDriver: busDoc?.activeDriver?.toString() === driverId ? null : busDoc?.activeDriver,
+      });
       await DriverModel.findByIdAndUpdate(driverId, { $pull: { assignedBuses: busId } });
 
       const updatedBus = await BusModel.findById(busId).populate("assignedDrivers").populate("assignedRoute");

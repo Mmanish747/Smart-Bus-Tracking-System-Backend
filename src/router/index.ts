@@ -9,7 +9,6 @@ import trackingRouter from "../modules/tracking/TrackingRouter.js";
 import notificationsRouter from "../modules/notifications/NotificationRouter.js";
 import dashboardRouter from "../modules/dashboard/DashboardRouter.js";
 import usersRouter from "../modules/users/UserRouter.js";
-import bannersRouter from "../modules/banners/BannerRouter.js";
 import teamsRouter from "../modules/teams/TeamRouter.js";
 import tripRouter from "../modules/trips/TripRouter.js";
 import stopsRouter from "../modules/stops/StopRouter.js";
@@ -26,7 +25,6 @@ router.use("/schedules", schedulesRouter);
 router.use("/tracking", trackingRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/notifications", notificationsRouter);
-router.use("/banners", bannersRouter);
 router.use("/teams", teamsRouter);
 router.use("/stops", stopsRouter);
 

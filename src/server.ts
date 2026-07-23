@@ -2,7 +2,7 @@ import http from "http";
 import app from "./app.js";
 import "./config/mongodb.js";
 import { seedDatabase } from "./config/seed.js";
-import { startTrackingSimulation } from "./modules/tracking/TrackingSimulator.js";
+//import { startTrackingSimulation } from "./modules/tracking/TrackingSimulator.js";
 import { initializeSocket } from "./socket/index.js";
 
 const server = http.createServer(app);

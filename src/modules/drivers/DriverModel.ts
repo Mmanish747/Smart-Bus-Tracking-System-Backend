@@ -61,6 +61,17 @@ const driverSchema = new Schema(
   },
   { timestamps: true }
 );
+// driverSchema.pre("save", async function (next) {
+//   if (this.driverId) return next();
+
+//   const Driver = this.constructor as typeof model;
+
+//   const count = await Driver.countDocuments();
+
+//   this.driverId = `DRV-${String(count + 1).padStart(4, "0")}`;
+
+//   next();
+// });
 
 export const DriverModel = model("Driver", driverSchema);
 export default DriverModel;

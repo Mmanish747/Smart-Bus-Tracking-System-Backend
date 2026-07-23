@@ -42,6 +42,7 @@ export class TripController {
       });
 
       bus.status = "active";
+      // @ts-ignore
       driver.status = "on_trip";
 
       await bus.save();
@@ -87,6 +88,7 @@ export class TripController {
 
       // Update bus and driver status
       await BusModel.findByIdAndUpdate(trip.bus, { status: "inactive" });
+      // @ts-ignore
       await DriverModel.findByIdAndUpdate(trip.driver, { status: "available" });
 
       res.status(200).json({

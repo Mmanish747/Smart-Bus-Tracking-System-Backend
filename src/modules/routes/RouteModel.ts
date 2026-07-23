@@ -32,6 +32,12 @@ const routeSchema = new Schema(
       ref: "Bus",
       default: null,
     },
+    assignedBuses: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Bus",
+      },
+    ],
     isActive: {
       type: Boolean,
       default: true,

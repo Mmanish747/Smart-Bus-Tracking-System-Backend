@@ -7,6 +7,7 @@ const trackingCtrl = new TrackingController();
 // Public telemetry submission from Driver Mobile App
 trackingRouter.post("/track", trackingCtrl.receiveTelemetry.bind(trackingCtrl));
 trackingRouter.post("/", trackingCtrl.receiveTelemetry.bind(trackingCtrl));
+trackingRouter.post("/initialize", trackingCtrl.initializeTracking.bind(trackingCtrl));
 
 // Public tracking lookup endpoints
 trackingRouter.get("/", trackingCtrl.getAllLiveTrackings.bind(trackingCtrl));

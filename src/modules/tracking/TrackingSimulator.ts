@@ -3,7 +3,7 @@ import { getIO } from "../../socket/index.js";
 // backend/src/modules/tracking/TrackingModel.ts
 
 import { Schema, model } from "mongoose";
-
+  
 const trackingSchema = new Schema(
   {
     driverId: { type: String, required: true },

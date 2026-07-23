@@ -37,6 +37,11 @@ const busSchema = new Schema(
       default: "",
     },
     // Bus ↔ Driver relationship
+    activeDriver: {
+      type: Schema.Types.ObjectId,
+      ref: "Driver",
+      default: null,
+    },
     assignedDrivers: [
       {
         type: Schema.Types.ObjectId,

@@ -13,7 +13,7 @@ export class StopController {
   ): Promise<void> {
     try {
       const { routeId } = req.params;
-      const record = await StopModel.findOne({ routeId });
+      const record = await StopModel.findOne({ routeId } as any);
       if (!record) {
         res
           .status(404)
@@ -41,7 +41,7 @@ export class StopController {
 
       // Upsert — if a record for this route already exists, replace it
       const record = await StopModel.findOneAndUpdate(
-        { routeId },
+        { routeId } as any,
         { routeId, startPoint, endPoint, stops },
         { new: true, upsert: true, runValidators: true }
       );
@@ -63,7 +63,7 @@ export class StopController {
   ): Promise<void> {
     try {
       const { routeId } = req.params;
-      await StopModel.findOneAndDelete({ routeId });
+      await StopModel.findOneAndDelete({ routeId } as any);
       res
         .status(200)
         .json({ success: true, message: "Stop record deleted." });

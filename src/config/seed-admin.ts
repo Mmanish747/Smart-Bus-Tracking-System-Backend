@@ -22,9 +22,9 @@ async function seedAdmin() {
       console.log("  Email:    admin@smartbus.com");
       console.log("  Password: admin123");
       console.log("  Role:    ", existingAdmin.role);
-      if (existingAdmin.role !== "admin") {
-        await UserModel.updateOne({ _id: existingAdmin._id }, { $set: { role: "admin" } });
-        console.log("  → Updated role to admin");
+      if (existingAdmin.role !== "super_admin") {
+        await UserModel.updateOne({ _id: existingAdmin._id }, { $set: { role: "super_admin" } });
+        console.log("  → Updated role to super_admin");
       }
       await mongoose.disconnect();
       return;
@@ -35,13 +35,13 @@ async function seedAdmin() {
       name: "Admin",
       email: "admin@smartbus.com",
       password: hashedPassword,
-      role: "admin",
+      role: "super_admin" as any,
     });
 
     console.log("Admin user created successfully!");
     console.log("  Email:    admin@smartbus.com");
     console.log("  Password: admin123");
-    console.log("  Role:     admin");
+    console.log("  Role:     super_admin");
 
     await mongoose.disconnect();
   } catch (error) {

@@ -22,7 +22,7 @@ export const seedDatabase = async (): Promise<void> => {
       name: "Admin",
       email: "admin@smartbus.com",
       password: hashedAdminPassword,
-      role: "admin",
+      role: "super_admin" as any,
     });
 
     // 1b. Seed Driver User
@@ -31,7 +31,7 @@ export const seedDatabase = async (): Promise<void> => {
       name: "Ram Bahadur",
       email: "ram@busdriver.com",
       password: hashedDriverPassword,
-      role: "driver",
+      role: "driver" as any,
     });
 
     // 2. Seed Routes with Kathmandu coordinates
@@ -137,7 +137,7 @@ export const seedDatabase = async (): Promise<void> => {
       modelName: "Tata Starbus",
       capacity: 40,
       status: "Active",
-      driver: driver._id,
+      assignedDrivers: [driver._id as any],
     });
 
     const bus2 = await BusModel.create({
@@ -145,7 +145,7 @@ export const seedDatabase = async (): Promise<void> => {
       modelName: "Swaraj Mazda",
       capacity: 32,
       status: "Active",
-      driver: driver._id,
+      assignedDrivers: [driver._id as any],
     });
 
     const bus3 = await BusModel.create({
@@ -153,7 +153,7 @@ export const seedDatabase = async (): Promise<void> => {
       modelName: "Eicher Starline",
       capacity: 36,
       status: "Active",
-      driver: driver._id,
+      assignedDrivers: [driver._id as any],
     });
 
     const bus4 = await BusModel.create({
@@ -161,7 +161,7 @@ export const seedDatabase = async (): Promise<void> => {
       modelName: "Tata Winger",
       capacity: 14,
       status: "Active",
-      driver: driver._id,
+      assignedDrivers: [driver._id as any],
     });
 
     // 4. Seed Schedules

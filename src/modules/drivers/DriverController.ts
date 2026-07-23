@@ -94,12 +94,13 @@ export class DriverController {
     try {
       const { driverId } = req.params;
 
+      const queryDriverId = String(driverId);
       const driver = await DriverModel.findOne({
         $or: [
-          { _id: driverId.match(/^[0-9a-fA-F]{24}$/) ? driverId : null },
-          { driverId: driverId },
+          { _id: queryDriverId.match(/^[0-9a-fA-F]{24}$/) ? queryDriverId : null },
+          { driverId: queryDriverId },
         ],
-      }).populate({
+      } as any).populate({
         path: "assignedBuses",
         populate: { path: "assignedRoute" },
       });
@@ -164,7 +165,22 @@ export class DriverController {
         return;
       }
 
+      // const count = await DriverModel.countDocuments();
+
+      const lastDriver = await DriverModel.findOne({
+        driverId: /^DRV-\d+$/
+      }).sort({ driverId: -1 });
+
+      let next = 1;
+
+      if (lastDriver?.driverId) {
+        next = parseInt(lastDriver.driverId.replace("DRV-", ""), 10) + 1;
+      }
+
+      const driverId = `DRV-${String(next).padStart(4, "0")}`;
+
       const driver = await DriverModel.create({
+        driverId,
         name,
         age,
         phoneNumber,
