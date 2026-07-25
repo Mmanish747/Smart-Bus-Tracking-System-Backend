@@ -13,5 +13,6 @@ trackingRouter.post("/initialize", trackingCtrl.initializeTracking.bind(tracking
 trackingRouter.get("/", trackingCtrl.getAllLiveTrackings.bind(trackingCtrl));
 trackingRouter.get("/route/:routeId", trackingCtrl.getLiveTrackingByRouteId.bind(trackingCtrl));
 trackingRouter.get("/:busId", trackingCtrl.getLiveTrackingByBusId.bind(trackingCtrl));
+trackingRouter.delete("/:id", trackingCtrl.deleteTracking.bind(trackingCtrl));
 
 export default trackingRouter;

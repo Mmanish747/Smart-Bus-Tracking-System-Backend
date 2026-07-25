@@ -258,6 +258,21 @@ export class TrackingController {
       next(error);
     }
   }
+
+  // ── DELETE /api/tracking/:id ──────────────────────────────────────────────
+  async deleteTracking(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const deleted = await TrackingModel.findByIdAndDelete(id);
+      if (!deleted) {
+        res.status(404).json({ success: false, message: "Tracking record not found." });
+        return;
+      }
+      res.status(200).json({ success: true, message: "Tracking deleted successfully." });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default TrackingController;
